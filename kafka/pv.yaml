@@ -1,0 +1,24 @@
+{{- if .Values.createStaticPVs }}
+{{- range $i, $e := until (.Values.replicaCount | int) }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kafka-pv-{{ $i }}
+spec:
+  storageClassName: {{ $.Values.storageClassName }}
+  capacity:
+    storage: {{ $.Values.storageSize }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  nfs:
+    path: {{ $.Values.nfsBasePath }}/kafka-{{ $i }}
+    server: {{ $.Values.nfsServer }}
+  claimRef:
+    namespace: {{ $.Values.namespace }}
+    name: data-kafka-{{ $i }}
+---
+{{- end }}
+{{- end }}
+
