@@ -1,0 +1,37 @@
+{{- range $i, $p := .Values.externalPorts }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-{{ $i }}-svc
+  namespace: {{ $.Values.namespace }}
+spec:
+  clusterIP: None
+  ports:
+    - name: external
+      port: {{ $p }}
+      targetPort: {{ $p }}
+  selector:
+    statefulset.kubernetes.io/pod-name: kafka-{{ $i }}
+
+NOTE:- namespace = kafka, externalports = 30994, 30995, 30996
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-svc
+  namespace: kafka
+  labels:
+    app: kafka-app
+spec:
+  clusterIP: None
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
+    - name: jmx
+      port: 7071
+      targetPort: 7071
+  selector:
+    app: kafka-app
+
