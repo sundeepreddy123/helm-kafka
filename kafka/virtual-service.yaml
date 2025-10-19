@@ -1,0 +1,19 @@
+{{- range $i, $p := .Values.externalPorts }}
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: kafka-secure-route-{{ $i }}
+  namespace: {{ $.Values.namespace }}
+spec:
+  hosts:
+    - "kafka-{{ $i }}{{ $.Values.externalSuffix }}.{{ $.Values.domain }}"
+  gateways:
+    - kafka-secure-gateway
+  tcp:
+    - route:
+        - destination:
+            host: kafka-{{ $i }}-svc.{{ $.Values.namespace }}.svc.cluster.local
+            port:
+              number: {{ $p }}
+---
+{{- end }}
