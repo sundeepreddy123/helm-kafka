@@ -1,0 +1,32 @@
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: kafka-secure-gateway
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    istio: {{ .Values.gatewaySelector }}
+  servers:
+{{- range $i, $p := .Values.externalPorts }}
+    - port:
+        number: {{ $p }}
+        name: tcp-kafka-{{ $i }}
+        protocol: {{ ternary "TLS" "TCP" (default false $.Values.secureConnection) }}
+      hosts:
+        - "kafka-{{ $i }}{{ $.Values.externalSuffix }}.{{ $.Values.domain }}"
+{{- if (default false $.Values.secureConnection) }}
+      tls:
+        mode: SIMPLE
+        credentialName: {{ $.Values.credentialName | quote }}
+{{- end }}
+{{- end }}
+
+NOTE:-
+  externalPorts:
+    - 30994
+    - 30995
+    - 30996
+  secureConnection: false
+  externalSuffix: -gel
+  doman: gmail.com
+  credentialName: my-tls-secret
