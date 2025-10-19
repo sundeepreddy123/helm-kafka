@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: kafka-app
+spec:
+  serviceName: kafka-svc
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: kafka-app
+  template:
+    metadata:
+      labels:
+        app: kafka-app
+    spec:
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: kafka-app
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: kafka-container
+          image: {{ .Values.kafkaImage }}:{{ .Values.kafkaImageTag }}
+          command:
+            - sh
+            - -exc
+            - |
+              export KAFKA_NODE_ID=${HOSTNAME##*-} && \
+              export EXTERNAL_PORT=$(({{ index .Values.externalPorts 0 }} + KAFKA_NODE_ID)) && \
+              export KAFKA_ADVERTISED_LISTENERS=SASL://${POD_NAME}.kafka-svc.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.kafkaPort }},EXTERNAL://${POD_NAME}{{ .Values.externalSuffix }}.{{ .Values.domain }}:${EXTERNAL_PORT} && \
+              export KAFKA_LISTENERS="SASL://:{{ .Values.kafkaPort }},CONTROLLER://:{{ .Values.controllerPort }},EXTERNAL://:${EXTERNAL_PORT}" && \
+              exec /etc/confluent/docker/run
+          ports:
+            - containerPort: {{ .Values.kafkaPort }}
+            - containerPort: {{ .Values.controllerPort }}
+            - containerPort: {{ .Values.jmxPort }}
+{{- range $p := .Values.externalPorts }}
+            - containerPort: {{ $p }}
+{{- end }}
+          env:
+            - name: KAFKA_JMX_PORT
+              value: "{{ .Values.jmxPort }}"
+            - name: KAFKA_JMX_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KAFKA_OPTS
+              value: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+            - name: KAFKA_LISTENER_NAME_SASL_PLAIN_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-auth-secret
+                  key: KAFKA_SASL_JAAS_CONFIG
+            - name: KAFKA_LISTENER_NAME_EXTERNAL_PLAIN_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-auth-secret
+                  key: KAFKA_SASL_JAAS_CONFIG
+            - name: KAFKA_SASL_ENABLED_MECHANISMS
+              value: PLAIN
+            - name: KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL
+              value: PLAIN
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: SASL
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "{{ .Values.replicationFactor }}"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "{{ .Values.numPartitions }}"
+            - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+              value: "{{ .Values.replicationFactor }}"
+            - name: KAFKA_MIN_INSYNC_REPLICAS
+              value: "{{ .Values.minInSyncReplicas }}"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: HOST_IP
+              valueFrom:
+                 fieldRef:
+                   fieldPath: status.hostIP
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_PROCESS_ROLES
+              value: "controller,broker"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: {{ include "kafka.controllerQuorumVoters" . | quote }}
+            - name: BOOTSTRAP_SERVER
+              value: {{ include "kafka.bootstrapServers" . | quote }}
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,SASL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT"
+            - name: CLUSTER_ID
+              value: {{ .Values.clusterId }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+          resources:
+            requests:
+              memory: {{ .Values.resources.requests.memory | quote }}
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: {{ .Values.storageClassName }}
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: {{ .Values.storageSize }}
+
+NOTE:-
+  enabled: true
+  namespace: kafka
+  domain: gmail.com
+  externalSuffix: -gel
+  kafkaImage: confluentinc/cp-kafka
+  gatewaySelector: ingressgateway-int
+  kafkaImageTag: 7.9.0
+  replicaCount: 3
+  resources:
+     requests:
+        cpu: "1"
+        memory: "1.5Gi"
+  externalPorts:
+    - 30994
+    - 30995
+    - 30996
+  kafkaPort: 9092
+  controllerPort: 9093
+  jmxPort: 7071
+  kafkaJaasConfig: $kafkaJaasConfig
+  replicationFactor: 3
+  numPartitions: 3
+  minInSyncReplicas: 2
+  storageSize: 5Gi
+  storageClassName: manual
+  nfsServer: masteripadress
+  nfsBasePath: /nfsroot
+  clusterId: XXXXXXXXXXXXXXXXX
+  secureConnection: false
+  credentialName: my-tls-secret
+
+
